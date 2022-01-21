@@ -1,0 +1,85 @@
+Yarn的集群架构和工作原理
+ResourceManager负责整个系统的资源管理和分配，ApplicationMaster负责单个应用程序的的管理。
+1) ResourceManager：
+RM是一个全局的资源管理器，负责整个系统的资源管理和分配.
+调度器根据容量、队列等限制条件，将系统中的资源分配给正在运行的应用程序，在保证容量、公平性和服务等级的前提下，优化集群资源利用率，让所有的资源都被充分利用应用程序管理器负责管理整个系统中的所有的应用程序，包括应用程序的提交、与调度器协商资源以启动ApplicationMaster、监控ApplicationMaster运行状态并在失败时重启它。
+2) ApplicationMaster：
+用户提交的一个应用程序会对应于一个ApplicationMaster
+a.与RM调度器协商以获得资源，资源以Container表示。
+b.将得到的任务进一步分配给内部的任务。
+c.与NM通信以启动/停止任务。
+d.监控所有的内部任务状态，并在任务运行失败的时候重新为任务申请资源以重启任务。、
+3) NodeManager：
+NodeManager是每个节点上的资源和任务管理器，一方面，它会定期地向RM汇报本节点上的资源使用情况和各个Container的运行状态；另一方面，他接收并处理来自AM的Container启动和停止请求。
+4) Container：
+Container是YARN中的资源抽象，封装了各种资源。一个应用程序会分配一个Container，这个应用程序只能使用这个Container中描述的资源。
+
+yarn 的任务提交流程是怎样的？
+当jobclient向YARN提交一个应用程序后，YARN将分两个阶段运行这个应用程序：一是启动ApplicationMaster;第二个阶段是由ApplicationMaster创建应用程序，为它申请资源，监控运行直到结束。
+具体步骤如下:
+1) 用户向YARN提交一个应用程序，并指定ApplicationMaster程序、启动ApplicationMaster的命令、用户程序。
+2) RM为这个应用程序分配第一个Container，并与之对应的NM通讯，要求它在这个Container中启动应用程序ApplicationMaster
+3) ApplicationMaster向RM注册，然后拆分为内部各个子任务，为各个内部任务申请资源，并监控这些任务的运行，直到结束。
+4) AM采用轮询的方式向RM申请和领取资源。
+5) RM为AM分配资源，以Container形式返回
+6) AM申请到资源后，便与之对应的NM通讯，要求NM启动任务。
+7) NodeManager为任务设置好运行环境，将任务启动命令写到一个脚本中，并通过运行这个脚本启动任务
+8) 各个任务向AM汇报自己的状态和进度，以便当任务失败时可以重启任务。
+9) 应用程序完成后，ApplicationMaster向ResourceManager注销并关闭自己
+
+yarn 的资源调度三种模型了解吗？
+在Yarn中有三种调度器可以选择：FIFO Scheduler ，Capacity Scheduler，Fair Scheduler
+apache版本的hadoop默认使用的是capacity scheduler调度方式。CDH版本的默认使用的是fair scheduler调度方式
+FIFO Scheduler（先进先出）：
+一个先进先出队列。
+Capacity Scheduler（容量调度器）：
+对于Capacity调度器，有专门的队列用来运行不同任务。每个队列可配置一定的资源量，每个队列采用FIFO调度策略。
+
+Fair Scheduler（公平调度器）：
+在Fair调度器中，Fair调度器会为所有运行的job动态的调整系统资源。
+比如：当第一个大job提交时，只有这一个job在运行，此时它获得了所有集群资源；当第二个小任务提交后，Fair调度器会分配一半资源给这个小任务，让这两个任务公平的共享集群资源。直到所有可用资源都被分配完，并不再分配了。
+
+Hive 内部表和外部表的区别
+未被external修饰的是内部表（managed table），被external修饰的为外部表（external table）
+区别：
+1) 内部表数据由Hive自身管理，外部表数据由HDFS管理；
+2) 内部表数据存储的位置是hive.metastore.warehouse.dir（默认：/user/hive/warehouse），外部表数据的存储位置由自己制定（如果没有位置，Hive将在HDFS上的/user/hive/warehouse文件夹下以外部表的表名创建一个文件夹，并将属于这个表的数据存放在这里）；
+3) 删除内部表会直接删除元数据（metadata）及存储数据；删除外部表仅仅会删除元数据，HDFS上的文件并不会被删除；
+
+hive 有索引吗？
+Hive支持索引，但是Hive的索引与关系型数据库中的索引并不相同，比如，Hive不支持主键或者外键。
+Hive索引可以建立在表中的某些列上，以提升一些操作的效率，例如减少MapReduce任务中需要读取的数据块的数量。
+
+Hive索引的机制：
+hive在指定列上建立索引，会产生一张索引表（Hive的一张物理表），里面的字段包括，索引列的值、该值对应的HDFS文件路径、该值在文件中的偏移量;
+因为索引是用空间换时间，索引列的取值过多会导致索引表过大。
+
+运维如何对hive进行调度？
+将hive的sql定义在脚本当中
+使用azkaban或者oozie进行任务的调度
+监控任务调度页面
+
+ORC、Parquet等列式存储的优点？
+ORC和Parquet都是高性能的存储方式，这两种存储格式总会带来存储和性能上的提升
+
+为什么要对数据仓库分层？
+用空间换时间，通过大量的预处理来提升应用系统的用户体验（效率），因此数据仓库会存在大量冗余的数据。
+如果不分层的话，如果源业务系统的业务规则发生变化将会影响整个数据清洗过程，工作量巨大。
+通过数据分层管理可以简化数据清洗的过程，因为把原来一步的工作分到了多个步骤去完成，相当于把一个复杂的工作拆成了多个简单的工作。每一层的处理逻辑都相对简单和容易理解，这样比较容易保证每一个步骤的正确性，当数据发生错误的时候，只需要局部调整某个步骤。
+
+sort by 和 order by 的区别？
+order by 会对输入做全局排序，因此只有一个reducer（多个reducer无法保证全局有序），会导致当输入规模较大时，需要较长的计算时间。
+sort by不是全局排序，其在数据进入reducer前完成排序.
+因此，如果用sort by进行排序，并且设置mapred.reduce.tasks>1， 则sort by只保证每个reducer的输出有序，不保证全局有序。
+
+Hive小文件过多怎么解决？
+使用 hive 自带的 concatenate 命令，自动合并小文件。使用hadoop的archive将小文件归档
+
+hive优化有哪些？
+数据存储及压缩。
+通过调参优化。
+设置map、reduce的参数；
+有效地减小数据集将大表拆分成子表；结合使用外部表和分区表。
+SQL优化
+大表对大表：尽量减少数据集，可以通过分区表，避免扫描全表或者全字段；
+大表对小表：设置自动识别小表，将小表放入内存中去执行。

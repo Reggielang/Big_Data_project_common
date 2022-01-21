@@ -1,0 +1,45 @@
+1.redis配置文件修改后，仍然无法在后台正常启动redis server的服务。 在绑定了阿里云内网和外网IP之后仍然无法在后台启动redis服务。
+解决办法：暂时不用后台启动，直接redis-server启动。用另外的窗口操作服务器即可。
+
+2.spark配置文件修改后，启动spark服务时，出现JAVA_HOME is not set的报错。但是服务是启动起来了。通过8080端口可以进入spark服务UI页面
+解决办法： 在spark目录里的sbin/spark-config.conf文件中加入export JAVA_HOME = /usr/java/jdk1.8.0_181-cloudera 的Java的JDK目录后。再次启动就没有报错了。
+
+3.zookeeper单节点服务器启动不起来，查看日志zookeeper.out之后，显示address already use，由于我的分布式集群zookeeper也是使用了2181端口，所以应该是端口被占用了，所以修改单节点zookeeper端口为2182端口，再次启动单节点模型，启动成功。
+
+4. 第一次Scala编写数据加载模块之后，打包上传之后出现CLASSNOTFIND等类型的错误，而且是mongoDB的class，这里估计是服务器的环境中没有MOONGODB相关的依赖，所以再次打包为jar和依赖组合的包上传执行数据加载模块成功
+
+
+5. package失败，报错信息object apache is not a member of package org，此错误不知道原因，估计是由于Maven的仓库目录存在中文，所以转移Maven文件夹到全英文目录后，没有再次发生。
+
+6.由于redis没有设置用户和密码，所以在实时推荐模块时连接redis一直会报错处于安全模式，修改redis.conf后，启动redis服务依然会报错。
+解决办法：redis服务启动时，加上参数redis-server --protect-mode no
+
+启动对应服务需要带上配置文件
+bin/mongod -f ./data/mongodb.conf 
+
+bin/mongo
+
+数据加载jar包
+bin/spark-submit --class DataLoader --master local[2] ./jars/Dataloader-1.0-jar-with-dependencies.jar 
+
+MongoDB中查看数据
+show dbs;
+use recommender
+show tables
+db.Product.find().pretty()
+
+离线统计推荐jar包
+bin/spark-submit --class StatisticsRecommender --master local[2] ./jars/StatisticsRecommender-1.0-jar-with-dependencies.jar
+
+
+离线ALS算法用户推荐列表jar包
+bin/spark-submit --class OfflineRecommender --master local[2] ./jars/OfflineRecommender-1.0-jar-with-dependencies.jar
+
+离线ALS算法最优参数选择jar包
+bin/spark-submit --class ALSTrainer --master local[2] ./jars/OfflineRecommender-1.0-jar-with-dependencies.jar
+
+kafka测试数据
+4867|8195|4.0|1641546006
+
+bin/spark-submit --class OnlineRecommender --master local[2] ./jars/OnlineRecommender-1.0-jar-with-dependencies.jar
+

@@ -1,0 +1,79 @@
+hadoop和spark使用场景？
+Hadoop/MapReduce和Spark最适合的都是做离线型的数据分析，但Hadoop特别适合是单次分析的数据量“很大”的情景，而Spark则适用于数据量不是很大的情景。
+
+spark如何保证宕机迅速恢复?
+适当增加spark standby master
+编写shell脚本，定期检测master状态，出现宕机后对master进行重启操作
+
+hadoop和spark的相同点和不同点？
+Hadoop底层使用MapReduce计算架构，只有map和reduce两种操作，表达能力比较欠缺，而且在MR过程中会重复的读写hdfs，造成大量的磁盘io读写操作，所以适合高时延环境下批处理计算的应用.
+
+Spark是基于内存的分布式计算架构，提供更加丰富的数据集操作类型，spark core的操作主要分成转换和行动，包括map、reduce、filter、flatmap、groupbykey、reducebykey、union和join等，数据分析更加快速，所以适合低时延环境下计算的应用；
+
+优势：spark计算模型是基于内存的迭代式计算模型，可以分为n个阶段，根据用户编写的RDD算子和程序，在处理完一个阶段后可以继续往下处理很多个阶段。所以spark相较于mapreduce，计算模型更加灵活，可以提供更强大的功能。
+
+劣势：由于spark基于内存进行计算，虽然开发容易，但是真正面对大数据的时候，在没有进行调优的情况下，可能会出现各种各样的问题，比如OOM内存溢出等情况，导致spark程序可能无法运行起来，而mapreduce虽然运行缓慢，但是至少可以慢慢运行完。
+
+RDD持久化原理？
+spark非常重要的一个功能特性就是可以将RDD持久化在内存中。
+调用cache()将数据持久化到内存中。
+
+checkpoint检查点机制？
+应用场景：当spark应用程序特别复杂，从初始的RDD开始到最后整个应用程序完成有很多的步骤，而且整个应用运行时间特别长，这种情况下就比较适合使用checkpoint功能。
+
+原因：对于特别复杂的Spark应用，会出现某个反复使用的RDD，即使之前持久化过但由于节点的故障导致数据丢失了，没有容错机制，所以需要重新计算一次数据。
+
+ checkpoint和持久化机制的区别？
+最主要的区别在于cache只是将数据保存在BlockManager中，但是RDD的lineage(血缘关系，依赖关系)是不变的。但是checkpoint执行完之后，rdd已经没有之前所谓的依赖rdd了。
+持久化的数据丢失的可能性更大，因为节点的故障会导致磁盘、内存的数据丢失。但是checkpoint的数据通常是保存在高可用的文件系统中，比如HDFS中，所以数据丢失可能性比较低。
+
+RDD机制理解吗？
+rdd分布式弹性数据集，简单的理解成一种数据结构。所有算子都是基于rdd来执行的，不同的场景会有不同的rdd实现类，但是都可以进行互相转换。rdd执行过程中会形成dag图，然后形成lineage保证容错性等。
+RDD在逻辑上是一个hdfs文件，在抽象上是一种元素集合，包含了数据。它是被分区的，分为多个分区，每个分区分布在集群中的不同结点上，从而让RDD中的数据可以被并行操作（分布式数据集）
+RDD的数据默认存放在内存中，但是当内存资源不足时，spark会自动将RDD数据写入磁盘。RDD的弹性体现在于RDD上自动进行内存和磁盘之间权衡和切换的机制。
+
+spark有哪些组件？
+master：管理集群和节点，不参与计算。
+worker：计算节点，进程本身不参与计算，和master汇报。
+Driver：运行程序的main方法，创建spark context对象。
+spark context：控制整个application的生命周期，包括dagsheduler和task scheduler等组件。
+client：用户提交程序的入口。
+
+spark工作机制？
+用户在client端提交作业后，会由Driver运行main方法并创建spark context。执行rdd算子，形成dagscheduler，按照rdd之间的依赖关系划分stage输入task scheduler。task scheduler会将stage划分为task set分发到各个节点的executor中执行。
+
+说下宽依赖和窄依赖
+宽依赖：
+本质就是shuffle。父RDD的每一个partition中的数据，都可能会传输一部分到下一个子RDD的每一个partition中，此时会出现父RDD和子RDD的partition之间具有交互错综复杂的关系，这种情况就叫做两个RDD之间是宽依赖。
+窄依赖：
+父RDD和子RDD的partition之间的对应关系是一对一的。
+
+Spark主备切换机制原理知道吗？
+Master实际上可以配置两个，Spark原生的standalone模式是支持Master主备切换的。当Active Master节点挂掉以后，我们可以将Standby Master切换为Active Master。Zookeeper的主备切换机制，可以切换Master。
+
+数据倾斜的产生和解决办法？
+数据倾斜因为某一个或者某几个partition的数据特别大，导致这几个partition上的计算需要耗费相当长的时间。
+或者一些算子会导致shuffle操作，是导致数据倾斜可能发生的关键点所在：groupByKey；reduceByKey；aggregaByKey；join；cogroup；
+避免数据倾斜，一般是要选用合适的key，或者自己定义相关的partitioner，通过哈希值来拆分这些key，从而将这些数据分散到不同的partition去执行。
+
+有hdfs文件，文件每行的格式为作品ID，用户id，用户性别。请用一个spark任务实现以下功能：
+统计每个作品对应的用户（去重后）的性别分布。输出格式如下：作品ID，男性用户数量，女性用户数量
+
+sc.textfile() .flatmap(.split(","))//分割成作品ID，用户id，用户性别
+.map(((_.1,_._2),1))//((作品id,用户性别),1)
+.reduceByKey(_+_)//((作品id,用户性别),n)
+.map(_._1._1,_._1._2,_._2)//(作品id,用户性别,n)
+
+RDD中reduceBykey与groupByKey哪个性能好，为什么？
+reduceByKey：reduceByKey会在结果发送至reducer之前会对每个mapper在本地进行merge，这样做的好处在于，在map端进行一次reduce之后，数据量会大幅度减小，从而减小传输，保证reduce端能够更快的进行结果计算。
+groupByKey：groupByKey会对每一个RDD中的value值进行聚合形成一个序列(Iterator)，此操作发生在reduce端，所以势必会将所有的数据通过网络进行传输，造成不必要的浪费。同时如果数据量十分大，可能还会造成OutOfMemoryError。
+所以在进行大量数据的reduce操作时候建议使用reduceByKey。不仅可以提高速度，还可以防止使用groupByKey造成的内存溢出问题。
+
+Spark streaming以及基本工作原理？
+Spark streaming是spark core API的一种扩展，可以用于进行大规模、高吞吐量、容错的实时数据流的处理。
+它支持从多种数据源读取数据，比如Kafka、Flume、Twitter和TCP Socket，并且能够使用算子比如map、reduce、join和window等来处理数据，处理后的数据可以保存到文件系统、数据库等存储中。
+
+DStream以及基本工作原理？
+DStream是spark streaming提供的一种高级抽象，代表了一个持续不断的数据流。
+DStream内部其实不断产生RDD，每个RDD包含了一个时间段的数据。
+Spark streaming一定是有一个输入的DStream接收数据，按照时间划分成一个一个的batch，并转化为一个RDD，RDD的数据是分散在各个子节点的partition中。

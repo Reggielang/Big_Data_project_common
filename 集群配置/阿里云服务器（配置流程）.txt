@@ -1,0 +1,298 @@
+阿里云服务器
+2CPU 8G centOS 7.5
+公有
+39.99.141.48
+39.98.119.10
+39.99.139.166
+私有
+172.18.123.167
+172.16.213.91
+172.17.78.76
+
+1.配置流程
+相关程序包准备
+2.更改hosts里主机映射
+
+3.生成公钥和私钥：
+[root@hadoop101 .ssh]$ ssh-keygen -t rsa
+然后敲（三个回车），就会生成两个文件id_rsa（私钥）、id_rsa.pub（公钥）
+
+2）将公钥拷贝到要免密登录的目标机器上
+[root@hadoop101 .ssh]$ ssh-copy-id hadoop101
+[root@hadoop101 .ssh]$ ssh-copy-id hadoop102
+[root@hadoop101 .ssh]$ ssh-copy-id hadoop103
+
+4.安装JDK
+rpm -ivh oracle-j2sdk1.8-1.8.0+update181-1.x86_64.rpm 
+[root@hadoop101 software]# vim /etc/profile
+export JAVA_HOME=/usr/java/jdk1.8.0_181-cloudera
+export CLASSPATH=.:$CLASSPATH:$JAVA_HOME/lib
+export PATH=$PATH:$JAVA_HOME/bin
+
+[root@hadoop101 software]# source /etc/profile
+5.分发,并source
+[root@hadoop101 software]# scp -r /usr/java/ hadoop102:/usr/
+[root@hadoop101 software]# scp -r /usr/java/ hadoop103:/usr/
+[root@hadoop101 software]# scp /etc/profile hadoop102:/etc/
+[root@hadoop101 software]# scp /etc/profile hadoop103:/etc/
+
+6.安装MySQL(存放元数据hive,CDH)
+（1）查看MySQL是否安装
+[root@hadoop101 桌面]# rpm -qa|grep -i mysql
+mysql-libs-5.1.73-7.el6.x86_64
+（2）如果安装了MySQL，就先卸载
+[root@hadoop101 桌面]# 
+rpm -e --nodeps mysql-libs-5.1.73-7.el6.x86_64
+（3）删除阿里云原有MySql依赖
+[root@hadoop101 桌面]# yum remove mysql-libs
+（4）下载MySql依赖并安装
+[root@hadoop101 ~]# yum install libaio
+[root@hadoop101 ~]# yum -y install autoconf
+[root@hadoop101 software]# wget https://downloads.mysql.com/archives/get/p/23/file/MySQL-shared-compat-5.6.24-1.el6.x86_64.rpm
+[root@hadoop101 software]# wget https://downloads.mysql.com/archives/get/p/23/file/MySQL-shared-5.6.24-1.el6.x86_64.rpm
+[root@hadoop101 software]# rpm -ivh MySQL-shared-5.6.24-1.el6.x86_64.rpm 
+[root@hadoop101 software]# rpm -ivh MySQL-shared-compat-5.6.24-1.el6.x86_64.rpm
+（5）上传mysql-libs.zip到hadoop101的/opt/software目录，并解压文件到当前目录
+[root@hadoop101 software]# yum install unzip
+[root@hadoop101 software]# unzip mysql-libs.zip
+（6）进入到mysql-libs文件夹下
+ [root@hadoop101 mysql-libs]# ll
+-rw-r--r--. 1 root root 18509960 3月  26 2015 MySQL-client-5.6.24-1.el6.x86_64.rpm
+-rw-r--r--. 1 root root  3575135 12月  1 2013 mysql-connector-java-5.1.27.tar.gz
+-rw-r--r--. 1 root root 55782196 3月  26 2015 MySQL-server-5.6.24-1.el6.x86_64.rpm
+
+安装MySQL服务器
+（1）安装MySQL服务端
+[root@hadoop101 mysql-libs]# rpm -ivh MySQL-server-5.6.24-1.el6.x86_64.rpm
+（2）查看产生的随机密码
+[root@hadoop101 mysql-libs]# cat /root/.mysql_secret
+zEywNxxv0f5MbPPG
+（3）查看MySQL状态
+[root@hadoop101 mysql-libs]# service mysql status
+（4）启动MySQL
+[root@hadoop101 mysql-libs]# service mysql start
+
+安装MySQL客户端
+（1）安装MySQL客户端
+[root@hadoop101 mysql-libs]# rpm -ivh MySQL-client-5.6.24-1.el6.x86_64.rpm
+（2）链接MySQL（密码替换成产生的随机密码）
+[root@hadoop102 mysql-libs]# mysql -uroot -pzEywNxxv0f5MbPPG
+（3）修改密码
+mysql>SET PASSWORD=PASSWORD('000000');
+（4）退出MySQL
+mysql>exit
+
+MySQL中user表中主机配置
+配置只要是root用户+密码，在任何主机上都能登录MySQL数据库。
+（1）进入MySQL
+[root@hadoop101 mysql-libs]# mysql -uroot -p000000
+（2）显示数据库
+mysql>show databases;
+（3）使用MySQL数据库
+mysql>use mysql;
+（4）展示MySQL数据库中的所有表
+mysql>show tables;
+（5）展示user表的结构
+mysql>desc user;
+（6）查询user表
+mysql>select User, Host, Password from user;
+（7）修改user表，把Host表内容修改为%
+mysql>update user set host='%' where host='localhost';
+（8）删除root用户的其他host
+mysql> delete from user where host!='%';
+（9）刷新
+mysql>flush privileges;
+（10）退出
+mysql>quit;
+
+7. 安装CM
+Cloudera Manager是一个拥有集群自动化安装、中心化管理、集群监控、报警功能的一个工具，使得安装集群从几天的时间缩短在几个小时内，运维人员从数十人降低到几人以内，极大的提高集群管理的效率。
+
+CM安装部署
+MySQL中建库
+1）创建各组件需要的数据库
+mysql> GRANT ALL ON scm.* TO 'scm'@'%' IDENTIFIED BY 'scm';
+mysql> CREATE DATABASE scm DEFAULT CHARACTER SET utf8 DEFAULT COLLATE utf8_general_ci;
+mysql> CREATE DATABASE hive DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+mysql> CREATE DATABASE oozie DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+mysql> CREATE DATABASE hue DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+
+CM安装
+（1）将mysql-connector-java-5.1.27-bin.jar拷贝到/usr/share/java路径下，并重命名
+[root@hadoop101 mysql-libs]# tar -zxvf mysql-connector-java-5.1.27.tar.gz 
+[root@hadoop101 mysql-libs]# cd mysql-connector-java-5.1.27
+[root@hadoop101 mysql-connector-java-5.1.27]# mv mysql-connector-java-5.1.27-bin.jar mysql-connector-java.jar
+[root@hadoop101 mysql-connector-java-5.1.27]# mkdir /usr/share/java
+[root@hadoop101 mysql-connector-java-5.1.27]# cp mysql-connector-java.jar /usr/share/java/
+[root@hadoop101 mysql-connector-java-5.1.27]# scp -r /usr/share/java/ hadoop102:/usr/share/
+[root@hadoop101 mysql-connector-java-5.1.27]# scp -r /usr/share/java/ hadoop103:/usr/share/
+
+集群规划
+节点	hadoop101		hadoop102		hadoop103
+服务  cloudera-scm-server
+         cloudera-scm-agent		cloudera-scm-agent		cloudera-scm-agent
+
+（2）创建cloudera-manager目录,存放cdh安装文件
+[root@hadoop101 mysql-connector-java-5.1.27]# mkdir /opt/cloudera-manager
+[root@hadoop101 mysql-connector-java-5.1.27]# cd /opt/software/
+[root@hadoop101 software]# tar -zxvf cm6.3.1-redhat7.tar.gz
+[root@hadoop101 software]# cd cm6.3.1/RPMS/x86_64/
+[root@hadoop101 x86_64]# mv cloudera-manager-agent-6.3.1-1466458.el7.x86_64.rpm /opt/cloudera-manager/
+[root@hadoop101 x86_64]# mv cloudera-manager-server-6.3.1-1466458.el7.x86_64.rpm /opt/cloudera-manager/
+[root@hadoop101 x86_64]# mv cloudera-manager-daemons-6.3.1-1466458.el7.x86_64.rpm /opt/cloudera-manager/
+[root@hadoop101 x86_64]# cd /opt/cloudera-manager/
+
+!注意：一定要按照顺序进行安装
+（3）安装cloudera-manager-daemons,安装完毕后多出/opt/cloudera目录
+[root@hadoop101 cloudera-manager]# rpm -ivh cloudera-manager-daemons-6.3.1-1466458.el7.x86_64.rpm 
+[root@hadoop101 cloudera-manager]# cd /opt/cloudera
+cloudera/         cloudera-manager/ 
+[root@hadoop101 cloudera-manager]# cd ..
+[root@hadoop101 opt]# scp -r /opt/cloudera-manager/ hadoop102:/opt/
+[root@hadoop101 opt]# scp -r /opt/cloudera-manager/ hadoop103:/opt/
+[root@hadoop102 ~]# cd /opt/cloudera-manager/
+[root@hadoop102 cloudera-manager]# rpm -ivh cloudera-manager-daemons-6.3.1-1466458.el7.x86_64.rpm 
+[root@hadoop103 ~]# cd /opt/cloudera-manager/
+[root@hadoop103 cloudera-manager]# rpm -ivh cloudera-manager-daemons-6.3.1-1466458.el7.x86_64.rpm 
+
+（4）安装cloudera-manager-agent
+[root@hadoop101 cloudera-manager]# yum install bind-utils psmisc cyrus-sasl-plain cyrus-sasl-gssapi fuse portmap fuse-libs /lib/lsb/init-functions httpd mod_ssl openssl-devel python-psycopg2 MySQL-python libxslt
+[root@hadoop101 cloudera-manager]# rpm -ivh cloudera-manager-agent-6.3.1-1466458.el7.x86_64.rpm 
+[root@hadoop102 cloudera-manager]# yum install bind-utils psmisc cyrus-sasl-plain cyrus-sasl-gssapi fuse portmap fuse-libs /lib/lsb/init-functions httpd mod_ssl openssl-devel python-psycopg2 MySQL-python libxslt
+[root@hadoop102 cloudera-manager]# rpm -ivh cloudera-manager-agent-6.3.1-1466458.el7.x86_64.rpm 
+[root@hadoop103 cloudera-manager]#yum install bind-utils psmisc cyrus-sasl-plain cyrus-sasl-gssapi fuse portmap fuse-libs /lib/lsb/init-functions httpd mod_ssl openssl-devel python-psycopg2 MySQL-python libxslt
+[root@hadoop103 cloudera-manager]# rpm -ivh cloudera-manager-agent-6.3.1-1466458.el7.x86_64.rpm 
+
+（5）安装agent的server节点
+[root@hadoop101 cloudera-manager]# vim /etc/cloudera-scm-agent/config.ini
+server_host=hadoop101
+[root@hadoop102 cloudera-manager]# vim /etc/cloudera-scm-agent/config.ini
+server_host=hadoop101
+[root@hadoop103 cloudera-manager]# vim /etc/cloudera-scm-agent/config.ini
+server_host=hadoop101
+（6）安装cloudera-manager-server
+[root@hadoop101 cloudera-manager]# rpm -ivh cloudera-manager-server-6.3.1-1466458.el7.x86_64.rpm 
+（7）回到opt目录下会看到新增的cloudera目录，把下面的文件传入cloudera的parcel-repo目录下（上传CDH包导入到parcel-repo）
+[root@hadoop101 software]# mv CDH-6.3.2-1.cdh6.3.2.p0.1605554-el7.parcel /opt/cloudera/parcel-repo/
+[root@hadoop101 software]# mv CDH-6.3.2-1.cdh6.3.2.p0.1605554-el7.parcel.sha1 /opt/cloudera/parcel-repo/
+[root@hadoop101 software]# mv manifest.json /opt/cloudera/parcel-repo/
+[root@hadoop101 parcel-repo]# mv CDH-6.3.2-1.cdh6.3.2.p0.1605554-el7.parcel.sha1 CDH-6.3.2-1.cdh6.3.2.p0.1605554-el7.parcel.sha
+（8）修改server的db.properties
+[root@hadoop101 parcel-repo]# vim /etc/cloudera-scm-server/db.properties 
+com.cloudera.cmf.db.type=mysql
+com.cloudera.cmf.db.host=hadoop101:3306
+com.cloudera.cmf.db.name=scm
+com.cloudera.cmf.db.user=scm
+com.cloudera.cmf.db.password=scm
+com.cloudera.cmf.db.setupType=EXTERNAL
+（9）启动server服务
+[root@hadoop101 log]# /opt/cloudera/cm/schema/scm_prepare_database.sh mysql scm scm
+[root@hadoop101 software]# systemctl start cloudera-scm-server 
+（10）启动agent节点
+[root@hadoop101 software]# systemctl start cloudera-scm-agent
+[root@hadoop102 software]# systemctl start cloudera-scm-agent
+[root@hadoop103 software]# systemctl start cloudera-scm-agent
+
+http://hadoop101:7180/
+
+8.CM的集群部署
+如果说要水平扩展（加服务器），只需要去装agent即可
+接受条款和协议
+集群安装
+指定主机
+选择CDH版本6.3.2
+等待下载安装
+检查网络性能，检查主机
+
+[root@hadoop101 software]# echo never > /sys/kernel/mm/transparent_hugepage/defrag
+[root@hadoop101 software]# echo never > /sys/kernel/mm/transparent_hugepage/enabled
+[root@hadoop102 software]# echo never > /sys/kernel/mm/transparent_hugepage/defrag
+[root@hadoop102 software]# echo never > /sys/kernel/mm/transparent_hugepage/enabled
+[root@hadoop103 software]# echo never > /sys/kernel/mm/transparent_hugepage/defrag
+[root@hadoop103 software]# echo never > /sys/kernel/mm/transparent_hugepage/enabled
+
+群集设置 自定义安装
+
+HDFS、YARN、Zookeeper安装
+分配节点 -- 查看集群节点分配即可
+集群设置全部选默认即可
+自动启动进程
+
+配置HDFS HA
+NameNode Ha(高可用):进程级别，解决数据一致性问题，不允许数据丢失
+ResourceManager Ha(高可用): 线程级别，解决任务失败（可以人为重跑）
+
+修改HDFS的权限检查配置
+关闭HDFS中的权限检查：dfs.permissions
+
+注意： 搭建Ha之后会多出哪些服务1.JournalNode 2.ZKFC自动切换故障迁移（zookeeper）
+配置NameNode HA
+注意：JournalNode： 负责同步NameNode元数据
+1）进入HDFS页面点击启用High Availability
+2) 命名
+3) 分配角色
+4）审核更改
+5）等待启动服务
+
+配置Yarn HA
+
+Kafka安装
+回到首页，点击添加服务
+Kafka的Broker选择三台机器 
+broker_max_heap_size 选择512M
+
+创建 Kafka Topic
+进入到/opt/cloudera/parcels/KAFKA目录下分别创建：启动日志主题、事件日志主题。
+1）创建topic test
+[root@hadoop101 parcel-repo]# /opt/cloudera/parcels/CDH/bin/kafka-topics --bootstrap-server hadoop101:9092,hadoop102:9092,hadoop103:9092  --create --replication-factor 1 --partitions 1 --topic test
+2.3.4 删除 Kafka Topic
+1）删除启动日志主题
+[root@hadoop101 parcel-repo]# /opt/cloudera/parcels/CDH/bin/kafka-topics --delete --bootstrap-server hadoop101:9092,hadoop102:9092,hadoop103:9092--topic test
+
+Hive安装
+注意： hive metastore服务器端口：9083 web 端口：10000
+添加服务
+将 Hive 服务添加到 Cluster 1
+配置hive元数据
+测试通过后继续
+自动启动Hive进程
+
+Spark安装
+CDH6.x自带spark2.4无需升级 
+
+其它配置修改
+HDFS配置域名访问
+ 在阿里云环境下 Hadoop集群必须用域名访问，不能用IP访问，开启如下配置dfs.client.use.datanode.hostname
+
+设置物理核和虚拟核占比
+  当前购买的阿里云配置物理核一共为6核，为演示效果将虚拟核扩大1倍，一般真实场景下物理核和虚拟核对比值为1:1或1:2
+修改配置，每台机器物理核2核虚拟成4核
+yarn.nodemanager.resource.cpu-vcores
+
+修改单个容器下最大cpu申请资源
+修改yarn.scheduler.maximum-allocation-vcores参数调整4核
+设置每个任务容器内存大小和单节点大小
+ 将每个任务容器默认大小从1G调大至4G，
+ 修改yarn.scheduler.maximum-allocation-mb 每个任务容器内存所需大小
+
+当前集群环境下每个节点的物理内存为8G，设置每个yarn可用每个节点内存为7G
+修改yarn.nodemanager.resource.memory-mb每个节点内存所需大小
+
+关闭Spark动态分配资源参数 spark和hive配置都有！
+关闭spark.dynamicAllocation.enabled 参数否则分配的资源不受控制
+
+修改HDFS副本数
+   修改副本数为1
+
+设置容量调度器
+CDH默认公平调度器，修改为容量调度器
+默认root队列，可以进行修改,添加3个队列spark,hive,flink，spark资源设置占yarn集群40%,hive设置占yarn集群20%,flink设置占40%
+配置完毕后重启服务，到yarn界面查看调度器,已经发生变化有hive队列和spark队列
+
+配置OOZIE
+工作流调度服务
+HUE的前置服务
+
+配置HUE
+可视化页面查询，写SQL
+8888，8889端口加入阿里云端口开放

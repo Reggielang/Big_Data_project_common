@@ -1,0 +1,151 @@
+Linux
+1、常用的高级命令（）
+find top  iotop   ps -ef   netstat   tree   df -h   rpm  tar 
+2、查看端口号  查看进程   查看磁盘使用情况
+netstat    top  ps -ef    df -h
+
+硬链接不能对目录进行创建，只可对文件创建；
+软链接可对文件或目录创建；
+
+硬链接： 与普通文件没什么不同，inode 都指向同一个文件在硬盘中的区块
+软链接： 保存了代表的文件绝对路径，是另外一种文件，在硬盘上有独立的区块，访问时替换自身路径。
+
+删除一个硬链接文件并不影响其他有相同 inode 号的文件。
+删除软链接并不影响被指向的文件，但若被指向的原文件被删除，则相关软连接被称为死链接。
+
+shell的话：写过Hadoop启停，查看各节点进程，zookeeper启停，Kafka启停，文件分发。
+
+hadoop中常问的有三块，第一：存储，问到存储，就把HDFS相关的知识点拿出来；第二：计算框架(MapReduce)；第三：资源调度框架(yarn)
+
+HDFS的读写流程：
+读流程
+1.client向namenode请求下载文件
+2.检查权限， 检查文件是否存在 返回目标文件的元数据
+3.Client 选取排序靠前的 DataNode读数据（达到负载的时候就换一个节点读）
+4.传输数据 
+读数据是串行读取
+
+写流程
+1.首先创建一个客户端。
+2.向namenode请求上传文件 --响应可以上传文件
+2.1检查权限 2.2.检查目录结构（目录是否存在）
+3. 请求上传第一个Block，告诉文件上传在哪个datanode.
+4.返回dn1,dn2,dn3节点，表示采用这三个节点存储数据
+4.1本地节点 4.2其他机架一个节点 4.3其他机架的另一个节点
+5.请求建立Block传输通道-请求建立通道
+6.dn3应答成功 -dn2应答成功- dn1应答成功 
+7.传输数据 Packet(64k) 磁盘内写一份数据，用内存发送
+packet(chunk512byte+chunksum4byte)
+网络拓扑-节点距离结算
+节点距离：两个节点到达最近的共同祖先的距离之和
+
+HDFS在读取文件的时候,如果其中一个块突然损坏了怎么办？
+
+客户端读取完DataNode上的块之后会进行checksum 验证，就是把客户端读取到的本地块与HDFS上的块进行校验，如果发现校验结果不一致，客户端会通知 NameNode，然后再从下一个拥有该 block 副本的DataNode 继续读
+
+HDFS在上传文件的时候,如果其中一个DataNode突然挂掉了怎么办？
+
+客户端上传文件时与DataNode建立pipeline管道，管道正向是客户端向DataNode发送的数据包，管道反向是DataNode向客户端发送ack确认。当DataNode突然挂掉了，客户端接收不到这个DataNode发送的ack确认，客户端会通知 NameNode，NameNode检查该块的副本与规定的不符，NameNode会通知DataNode去复制副本，并将挂掉的DataNode作下线处理，不再让它参与文件上传与下载。
+
+NameNode在启动的时候会做哪些操作？
+
+NameNode数据存储在内存和本地磁盘，本地磁盘数据存储在fsimage镜像文件和edits编辑日志文件
+首次启动NameNode
+1、格式化文件系统，为了生成fsimage镜像文件
+2、启动NameNode
+（1）读取fsimage文件，将文件内容加载进内存
+（2）等待DataNade注册与发送block report
+3、启动DataNode
+（1）向NameNode注册
+（2）发送block report
+（3）检查fsimage中记录的块的数量和block report中的块的总数是否相同
+4、对文件系统进行操作（创建目录，上传文件，删除文件等）
+（1）此时内存中已经有文件系统改变的信息，但是磁盘中没有文件系统改变的信息，此时会将这些改变信息写入edits文件中，edits文件中存储的是文件系统元数据改变的信息。
+第二次启动NameNode
+1、读取fsimage和edits文件
+2、将fsimage和edits文件合并成新的fsimage文件
+3、创建新的edits文件，内容为空
+4、启动DataNode
+
+Secondary NameNode了解吗，它的工作机制是怎样的？
+
+Secondary NameNode 是合并NameNode的edit logs到fsimage文件中；
+具体工作机制：
+（1）Secondary NameNode询问NameNode是否需要checkpoint。
+（2）Secondary NameNode请求执行checkpoint
+（3）NameNode滚动正在写的edits日志
+（4）将滚动前的编辑日志和镜像文件拷贝到Secondary NameNode
+（5）Secondary NameNode加载编辑日志和镜像文件到内存，并合并
+（6）生成新的镜像文件fsimage.chkpoint
+（7）拷贝fsimage.chkpoint到NameNode
+（8）NameNode将fsimage.chkpoint重新命名成fsimage
+所以如果NameNode中的元数据丢失，是可以从Secondary NameNode恢复一部分元数据信息的，但不是全部，因为NameNode正在写的edits日志还没有拷贝到Secondary NameNode，这部分恢复不了
+
+Secondary NameNode不能恢复NameNode的全部数据，那如何保证NameNode数据存储安全？
+
+这个问题要说NameNode的高可用了
+一个NameNode有单点故障的问题，那就配置双NameNode，配置有两个关键点，一是必须要保证这两个NN的元数据信息必须要同步的，二是一个NN挂掉之后另一个要立马补上。
+元数据信息同步在 HA 方案中采用的是“共享存储”。每次写文件时，需要将日志同步写入共享存储，这个步骤成功才能认定写文件成功。然后备份节点定期从共享存储同步日志，以便进行主备切换。
+监控NN状态采用 zookeeper，两个NN节点的状态存放在ZK中，另外两个NN节点分别有一个进程监控程序，实施读取ZK中有NN的状态，来判断当前的NN是不是已经down机。如果standby的NN节点的ZKFC发现主节点已经挂掉，那么就会强制给原本的active NN节点发送强制关闭请求，之后将备用的NN设置为active。
+
+在NameNode HA中，会出现脑裂问题吗？怎么解决脑裂？
+假设 NameNode1 当前为 Active 状态，NameNode2 当前为 Standby 状态。如果某一时刻 NameNode1 对应的 ZKFailoverController 进程发生了“假死”现象，那么 Zookeeper 服务端会认为 NameNode1 挂掉了，根据前面的主备切换逻辑，NameNode2 会替代 NameNode1 进入 Active 状态。但是此时 NameNode1 可能仍然处于 Active 状态正常运行，这样 NameNode1 和 NameNode2 都处于 Active 状态，都可以对外提供服务。这种情况称为脑裂
+脑裂对于NameNode 这类对数据一致性要求非常高的系统来说是灾难性的，数据会发生错乱且无法恢复。Zookeeper 社区对这种问题的解决方法叫做 fencing，中文翻译为隔离，也就是想办法把旧的 Active NameNode 隔离起来，使它不能正常对外提供服务。
+在进行 fencing 的时候，会执行以下的操作：
+1) 首先尝试调用这个旧 Active NameNode 的 HAServiceProtocol RPC 接口的 transitionToStandby 方法，看能不能把它转换为 Standby 状态。
+2) 如果 transitionToStandby 方法调用失败，那么就执行 Hadoop 配置文件之中预定义的隔离措施，Hadoop 目前主要提供两种隔离措施，通常会选择 sshfence：
+(1) sshfence：通过 SSH 登录到目标机器上，执行命令 fuser 将对应的进程杀死
+(2) shellfence：执行一个用户自定义的 shell 脚本来将对应的进程隔离
+
+小文件过多会有什么危害,如何避免？
+Hadoop上大量HDFS元数据信息存储在NameNode内存中,因此过多的小文件会压垮NameNode的内存
+
+显而易见的解决这个问题的方法就是合并小文件,可以选择在客户端上传时执行一定的策略先合并,或者是使用Hadoop的CombineFileInputFormat<K,V\>实现小文件的合并，或者HAR小文件归档文件。
+
+请说下HDFS的组织架构（进程）？
+1）Client：客户端
+（1）切分文件。文件上传HDFS的时候，Client将文件切分成一个一个的Block，然后进行存储
+（2）与NameNode交互，获取文件的位置信息
+（3）与DataNode交互，读取或者写入数据
+（4）Client提供一些命令来管理HDFS，比如启动关闭HDFS、访问HDFS目录及内容等
+2）NameNode：主节点，存储数据的元数据信息，不存储具体的数据
+（1）管理HDFS的名称空间
+（2）管理数据块（Block）映射信息
+（3）配置副本策略
+（4）处理客户端读写请求
+3）DataNode：数据节点。NameNode下达命令，DataNode执行实际的操作
+（1）存储实际的数据块
+（2）执行数据块的读/写操作
+4）Secondary NameNode：并非NameNode的热备。当NameNode挂掉的时候，它并不能马上替换NameNode并提供服务
+（1）辅助NameNode，分担其工作量
+（2）定期合并Fsimage和Edits，并推送给NameNode
+（3）在紧急情况下，可辅助恢复NameNode
+
+请说下MR中Map Task的工作机制？
+inputFile通过split被切割为多个split文件，通过Record按行读取内容给map（自己写的处理逻辑的方法）
+，数据被map处理完之后交给OutputCollect收集器，对其结果key进行分区（默认使用的hashPartitioner），然后写入buffer，每个map task 都有一个内存缓冲区（环形缓冲区），存放着map的输出结果，当缓冲区快满的时候需要将缓冲区的数据以一个临时文件的方式溢写到磁盘，当整个map task 结束后再对磁盘中这个maptask产生的所有临时文件做合并，生成最终的正式输出文件，然后等待reduce task的拉取
+
+请说下MR中Reduce Task的工作机制？
+Reduce 大致分为 copy、sort、reduce 三个阶段，重点在前两个阶段。copy 阶段包含一个 eventFetcher 来获取已完成的 map 列表，由 Fetcher 线程去 copy 数据，在此过程中会启动两个 merge 线程，分别为 inMemoryMerger 和 onDiskMerger，分别将内存中的数据 merge 到磁盘和将磁盘中的数据进行 merge。待数据 copy 完成之后，copy 阶段就完成了。sort 阶段主要是执行 finalMerge 操作，把分散的数据合并成一个大的数据后，还会再对合并后的数据排序。完成之后就是 reduce 阶段，调用用户定义的 reduce 函数进行处理
+
+
+请说下MR中shuffle阶段？
+shuffle阶段分为四个步骤：依次为：分区，排序，规约，分组，其中前三个步骤在map阶段完成，最后一个步骤在reduce阶段完成
+shuffle 是 Mapreduce 的核心，分布在map 阶段之后和 reduce 阶段之前。
+
+Collect阶段：将 MapTask 的结果输出到默认大小为 100M 的环形缓冲区，保存的是 key/value，Partition 分区信息等。
+Spill阶段：当内存中的数据量达到一定的阀值的时候，就会将数据写入本地磁盘，在将数据写入磁盘之前需要对数据进行一次排序的操作，如果配置了 combiner，还会将有相同分区号和 key 的数据进行排序。
+Merge阶段：把所有溢出的临时文件进行一次合并操作，以确保一个 MapTask 最终只产生一个中间数据文件
+4.** Copy阶段**：ReduceTask 启动 Fetcher 线程到已经完成 MapTask 的节点上复制一份属于自己的数据，这些数据默认会保存在内存的缓冲区中，当内存的缓冲区达到一定的阀值的时候，就会将数据写到磁盘之上
+Merge阶段：在 ReduceTask 远程复制数据的同时，会在后台开启两个线程对内存到本地的数据文件进行合并操作
+Sort阶段：在对数据进行合并的同时，会进行排序操作，由于 MapTask 阶段已经对数据进行了局部的排序，ReduceTask 只需保证 Copy 的数据的最终整体有效性即可。
+Shuffle 中的缓冲区大小会影响到 mapreduce 程序的执行效率，原则上说，缓冲区越大，磁盘io的次数越少，执行速度就越快
+缓冲区的大小可以通过参数调整, 参数：mapreduce.task.io.sort.mb 默认100M
+
+shuffle阶段的数据压缩机制了解吗？
+在shuffle阶段，可以看到数据通过大量的拷贝，从map阶段输出的数据，都要通过网络拷贝，发送到reduce阶段，这一过程中，涉及到大量的网络IO，如果数据能够进行压缩，那么数据的发送量就会少得多。
+hadoop当中支持的压缩算法：
+gzip、bzip2、LZO、LZ4、Snappy，这几种压缩算法综合压缩和解压缩的速率，Snappy是最优的，一般都选择Snappy压缩。
+
+在写MR时，什么情况下可以使用combiner?
+combiner是不能够影响任务的运行结果的，局部汇总，适用于求和类，不适用于求平均值，如果reduce的输入参数类型和输出参数的类型是一样的，则combiner的类可以使用reduce类

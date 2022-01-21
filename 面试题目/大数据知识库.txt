@@ -1,0 +1,406 @@
+一、Linux
+	1、常用的高级命令（）
+	top  iotop   ps -ef   netstat   tree   df -h   rpm  tar 
+	2、查看端口号  查看进程   查看磁盘使用情况
+	netstat    top  ps -ef    df -h
+二、Shell
+	1、写过哪些脚本
+		1）分发同步 、Hadoop启动停止，zk启动停止，Kafka启动停止，查看所有节点进程	
+三、Hadoop
+	1、入门
+		1）常用的端口号
+			3.x 9870   8020/9000/9820   8088  19888
+			2.x 50070  8020/9000   8088  19888
+	
+		2）常用的配置文件
+			3.x	core-site.xml  hdfs-site.xml  yarn-site.xml  mapred-site.xml  workers
+			2.x core-site.xml  hdfs-site.xml  yarn-site.xml  mapred-site.xml  slavers
+	
+	2、HDFS
+		1）HDFS的读写流程（笔试题）
+		2）小文件的危害
+			（1）存储   NN的存储空间  150字节1个文件块
+					128g * 1024m * 1024kb * 1024字节 / 150字节 = 9亿 
+
+			（2）计算
+				1个文件单独切片  1 maptask  1g 
+		3）小文件解决
+			（1）har 
+			（2）combinetextInputformat
+			（3）JVM
+				开始  3s 
+				干活  2s 
+					.... 
+				干活  2s 
+				结束   3s
+				<property>
+				<name>mapreduce.job.jvm.numtasks</name>
+				<value>10</value>
+				<description>How many tasks to run per jvm,if set to -1 ,there is  no limit</description>
+				</property>  
+		4）副本数  3个
+		5）块大小
+			1.x 		64m
+			2.x 3.x 	 	128m
+			本地		32m 
+			企业		128  256m 
+			hive 		256m 
+			
+	影响块大小：磁盘的读写速度
+	机械 128m    小企业
+	固态  256m   大企业	
+	3、MR
+		shuffle及其优化
+		map方法之后  reduce方法之前  混洗过程
+	4、YARN
+		1）yarn工作机制	
+		2）yarn调度器
+			（1）三种 FIFO   容量   公平
+			（2）FIFO：单队列   先进先出    在生产环境几乎不用
+			（3）容量：多队列   资源不够可以借   优先分配资源给先进来的任务
+			（4）公平：多队列   资源不够可以借 队列中任务公平享有队列资源  按照缺额
+			（5）生产环境： 对并发度要求比较高：公平    对并发度要求比较低; 容量
+			（6）默认一个default 	=> 
+					按照框架引擎：hive   mr    spark  flink 
+					按照业务：降级使用
+						登录     √注册    √下单  x  支付   x 物流 x
+			
+四、Zookeeper
+	1、选举机制  半数机制  
+	2、安装  奇数台
+	3、10台服务器  安装多少zk  3台
+		20台服务器  安装多少zk  5台
+		50台服务器  安装多少zk  7台
+		100台服务器  安装多少zk  11台
+		200台服务器  安装多少zk  11台
+		zk多好处 ：可靠性高   坏处：慢
+	4、常用命令
+		ls  get  create delete 
+		
+五、Flume（三件事）
+	1、组成（source  channel   sink   put  take ）
+		1）taildir source  
+			（1）断点续传 、多目录  
+			（2）cdh   1.6产生的   apache 1.7 
+			（3）自定义source    有可能重复
+					自身  效率低
+					找兄弟  dwd  spark  flink  redis 
+		2）channel 
+			（1）memory  channel   内存    效率高   可靠性低
+			
+			（2）file channel		磁盘    效率低   可靠性高 
+			
+			（3）kafka channel    kafka 磁盘  可靠性高   效率 ‘
+			kafka channel  》  memory channel + kafka sink 
+			1.6产生的kafka channel =》 有bug  
+			1.7 解决了bug => 开始大量使用
+			选择：如果下一级是kafka  选 kafka channel
+			如果不是kafka,  追求效率memory channel  可靠性选择file channel 
+					
+		3）sink
+			大小  128m    时间  1小时    event 个数 =0
+	
+	2、三个器（拦截器、选择器、监控器）
+		1）拦截器  
+			（1）ETL拦截器   判断json是否完整
+				不用可以  =》  dwd  层
+			（2）时间戳拦截器  解决零点漂移问题
+			（3）自定义拦截器步骤
+				定义类 实现interceptor接口，重写四个方法  单event 多event 开始  关闭
+				静态内部类 builder 
+				打包、上传  flime/lib  => 在配置文件  全类名 $ builder 
+				
+		2）选择器
+			re  把数据发往下一级所有通道   log (动作、页面、曝光、错误、启动)
+			mu   选择性发往指定的通道（事件 、启动）
+		3）监控器
+			g 
+			自身    ：提高内存    flume-env.sh  默认2000m   =>    4-6g 
+			找兄弟	：增加机器
+			服务器  8g  16g  32g 
+
+	3、优化、挂了怎么办
+		（1）file channel   能配置多目录就配置多目录（多磁盘） 能提高吞吐量
+		（2）sink
+			大小  128m    时间  1小时    event 个数 =0
+		（3）监控器
+			g 
+			自身    ：提高内存    flume-env.sh  默认2000m   =>    4-6g 
+			找兄弟	：增加机器
+			服务器  8g  16g  32g 
+		（4）挂了怎么办
+			memory channel  默认 100个event    file channel 100万个
+			偶尔重复  下一级处理	
+六、Kafka (23件事)
+	1、基本
+		1）组成  生产者、broker、消费者、 zk 
+		2）安装多少台：  2 * （生产者峰值生产速率 * 副本 /  100）  + 1 = 3
+		3）压测：生产者峰值生产速率   消费者峰值晓峰速率
+		4）副本：默认1个  =》 生产环境可以配置2-3个  2个居多
+			副本多了 ：可靠性高，  效率低
+		5）速率 
+			100万日活 * 100条   = 1亿条
+			1条 1k 
+			
+			1亿条/ (24小时 * 3600s ) = 1150条/s    1m/s 
+			
+			峰值：7-12    20m/s  - 50m/s 
+			
+		6）日志 保存多久  默认7天 =》  3天
+		
+		7）磁盘预留多大：
+			100g * 2个副本  * 3天  / 0.7 = 1t
+		8）是否做监控
+			kafka  eagle   kafka manager    我们公司是自己研发的 
+		9）分区分配策略
+			粘性分区
+			range  默认
+			
+				10个分区  3线程
+				0 1 2 3     数据倾斜
+				4 5 6 
+				7 8 9 
+			ra
+				全部打散轮询 
+		10）设置多少个分区
+			3-10个 
+			期望的吞吐量 ：t  100m/s 
+			生产者峰值生产速率: tp  20m/s
+			消费者峰值晓峰速率:tc    40m/s 
+
+			分区数= t/min(tp, tc ) = 5个分区
+		11）isr 
+			解决  leader挂了谁当老大  ，   在isr队列的都有机会
+			旧版本：延迟时间、延迟条数   新版本：延迟时间
+		12）topic 
+			满足下一级所有消费者  还要有适当聚合
+	2、挂了 
+		短时间 channel 
+		长时间： 日志服务器30天数据
+	3、丢了
+		ack   
+		0  	生产者发送过来数据 =》     效率高  可靠性低 
+		1  	生产者发送过来数据 =》  leader应答 效率一般  可靠性一般	
+		-1  生产者发送过来数据 =》leader + follower 应答  效率低  可靠性高 
+	4、重复了
+		事务 幂等性  ack =-1   （精确一次性消费）
+		普通日志 就不用了
+		下游处理： dwd  spark  flink   redis 
+	5、积压了
+		（1）增加分区   1-》5个分区   下一级消费者  1CPU  5CPU
+		（2）消费者 增加每批次的数据量  1000个event =》  2000个event  3000个event
+	6、优化
+		副本1个=》2个 
+		数据保存 7天=》 3天
+	7、杂七杂八
+		1）Kafka高效读写数据
+			（1）集群  多分区
+			（2）顺序读写
+			（3）零拷贝
+		2）传输过来2m的日志 ，kafka会怎么样？
+		
+七、Hive（10件事）
+	1、组成
+	2、hive与 MySQL 区别
+				hive     	MySQL
+		数据量		大       	小 
+		速度	             大查询快   	小查询快
+		除了语法接近以外，其他都不一样
+	3、内部表和外部表区别
+		删除内部表：元数据  原始数据
+		删除外部表：元数据
+		建表大多数都是外部表 
+		只有自己使用的临时表
+	4、4个by
+		order by    全局排序   
+		sort by 	排序
+		d 	分区 
+		c	分区排序
+	5、系统函数
+		date_add  date_sub   next_day  date_format  get_json_object
+	6、自定义函数
+		UDF   定义类 继承UDF=》 evaluate   一进一出
+		UDTF   定义类 继承G...UDTF  重写三个方法：初始化（校验返回值类型和名称）、关闭、process  
+		UDAF 
+		解析json是会用到这些自定义函数，
+		系统函数就能解决为什么还要自定义=》方便debug. 需要引用第三方jar包的时候
+	7、窗口函数
+		rank  over   开窗   top  手写代码
+	8、优化
+		1）mapjoin  默认打开  不关闭
+		2）提前进行行列过滤  =》 就是需要过滤的时候，先过滤，然后再join
+		3）创建分区（防止后续全表扫描） 分桶（数据量大，未知key，采样）
+		4）小文件处理：
+			（1）！combineHiveInputFormat -> 把多个小文件放在一起进行切片
+			（2）JVM重用
+			（3）！merge  mr  需要手动打开    maponly 默认打开 
+				将小于16M的文件自动合并为256M
+		5）压缩
+		map（snappy ） reduce
+		6）列式存储
+			id   name  age
+			1    zs 18
+			2    li    19
+			行：1    zs    18  2    li    19
+			列：1  2   zs   li   18   19
+			select name from user 
+			列式存储查询更快一些	
+		7）提前combiner 
+		前提：不影响最终逻辑
+		8）合理设置map个数和reudce个数
+			map不能直接设置 -》 max(0,min(块大小，long最大值)   128-》1g
+			reduce个数 （128m => 1g内存）
+		9）引擎：mr（处理3天以上的任务）    tez   spark（每天任务，定时跑的任务）
+	9、数据倾斜
+		zs 创建    user_id字段为int
+		li    创建了 log表中user_id字段string类型
+		ww 想两个表join 
+		解决办法：把数字类型转换成字符串类型
+	空值过多：
+	在生产环境经常会用大量空值数据进入到一个reduce中去，导致数据倾斜。
+	解决办法：
+	自定义分区，将为空的key转变为字符串加随机数或纯随机数，将因空值而造成倾斜的数据分不到多个Reducer。
+	注意：对于异常值如果不需要的话，最好是提前在where条件里过滤掉，这样可以使计算量大大减少
+	10、
+	--hive-drop-import-delims  导入到hive时删除 \n, \r, \001 
+	--hive-delims-replacement  导入到hive时用自定义的字符替换掉 \n, \r, \001
+九、Azkaban oozie   airflow  DolphinScheduler
+	1、跑多少任务   100-200之间   100个    150-160
+	2、什么时间之间  半夜 00：30  =》 8点之前结束
+	3、服务挂了 =》  重启
+	4、指标挂了 =》 邮件  打电话	
+十、从0-1怎么办？
+	1、数据量：  100万日活 
+	2、人：1个
+	3、需要几个：1个 + 1个 
+	4、没有机器：50万   阿里云（不需要运维）  物理机
+	5、时间：1个月：
+	6、离线还是实时    先做离线后做实时  （流批一体）
+	7、电商业务
+	8、用户行为数据(日志文件)   业务数据（mysql ）
+	9、展示方式：  有报表（每天8点出）
+十一、数仓分层
+	1、数仓如何建模的？
+		1）将业务表 导入到EZDML，通过id,将所有表关联在一起
+		2）ODS层
+			（1）保持数据原貌不做任何修改    备份
+			（2）创建分区表	防止后续全表扫描
+			（3）采用压缩	减少磁盘存储空间
+		3）DWD层
+			（1）选择业务过程（100张表）
+				①：中小公司，直接全量
+				②：大型公司：根据业务过程选择（ads层最终统计的需求）
+			（2）声明粒度
+				粒度：一行信息代表什么含义     一次下单   一天下单  一周的下单   一个月的下单
+				期望是最小粒度：只要不做聚合操作就可以。
+			（3）确认维度
+				 什么时间、什么地点  谁  商品、活动、优惠卷 （ads层最终统计的需求）
+			（4）确认事实
+				度量值：次数 件事  个数  金额  可以累加的值
+			（5）维度退化
+				商品表  商品SPU表  商品品类表   一级分类  二级分类  三级分类 =》  商品维度表
+				省份表  +  地区表 =》  地区维度表
+			（6）数据清洗 ：手段  mr   hql  spark sql   python  kettle 
+			（7）清洗的规则是什么？
+				解析数据、核心字段不能为空、过期数据清洗、重复去重
+				身份证号  手机号 邮箱号 网站。。。。。
+				规则：删除   或者   替换 标准默认值 （null   ""）
+			（8）清洗掉多少脏数据？ 1万条 /  1 条
+			（9）压缩  减少磁盘空间
+			（10）列式存储   
+			（11）脱敏  手机号 135 **** 0013
+						md5加密
+						加权限：
+		4）DWS层 （按天聚合的宽表）
+			（1）有哪些表
+				站在维度的角度去看事实  商品   用户、  访客   地区、  活动、  优惠卷
+			（2）每个表里面的字段怎么来？
+				站在维度的角度去看事实  看事实表的 度量值   =》  用户（性别  年龄  身高体重）
+		5）ADS 层 （指标，报表层）
+			一口气30个指标（日活 新增 留存  转化率  7天内连续3天 ）
+			手写代码  主动写sql  (开窗   topn    行转列    列转行   count  sum   topn )	
+十三、spark		
+	1、入门
+		1）spark是解决什么问题的：海量数据的计算问题
+			hadoop   :  计算  存储
+		2）spark为什么有自己的调度器 ？yarn 
+		3）运行模式
+			（1）local 			测试
+			（2）standalone		对性能要求非常高的场景
+			（3）yarn			国内大量使用
+			（4）m				不会
+			（5）k8s			了解
+		4）常用端口号
+			（1）4040  spark shell 
+			（2）7077  8020 /9000
+			（3）8080  8088
+			（4）18080  19888
+		5）手写wordcount 
+	2、sparkcore
+		1）代码都在哪执行   E（算子执行）   D  
+		2）RDD五大属性
+			（1）标记数据是哪个分区的
+			（2）计算
+			（3）分区器
+			（4）血缘依赖
+			（5）移动数据不如移动计算
+		3）转换算子
+			（1）value
+				map 
+				mapp
+				mappw
+				flatmap
+				filter
+				re  shuffle   修改分区
+				c 	 缩减分区
+				pipe
+				groupby
+			（2）双value
+				zip
+			（3）keyvalue
+				partitionby
+				groupbykey     不预聚合
+				reducebykey   预聚合		
+				reducebykey   没有初始值    分区内分区间逻辑 相同
+				fold			有初始值   分区内分区间逻辑 相同
+				agg 			有初始值		分区内分区间逻辑 可以不相同
+				combin		有初始值（变换结构）分区内分区间逻辑 可以不相同
+				sortbykey 
+				mapvalues 
+		4）行动算子
+			reduce 
+			first
+			take 
+			forecah
+			collect 
+		5）KRYO序列化
+		6）cache   	不改变血缘     内存
+			checkpoint  切断血缘    HDFS  
+			企业：cache + checkpoint
+		7）血缘
+			宽依赖（shuffle ）  窄依赖
+		8）任务分配
+			（1）app   context上下文个数
+			（2）job   行动算子个数
+			（3）stage  shuffle + 1
+			（4）take  每个阶段  最后一个算子对应的分区数
+
+		9）累加器
+		10）广播变量
+	3、spark sql 
+		rdd  df  ds 
+		hive on  spark    元数据：mysql   执行引擎：rdd   语法：hql
+		spark on hive    元数据:mysql 执行引擎：df  ds    语法：spark sql 
+		
+		内部hive :derby
+		外部hive ：mysql 
+	4、spark streaming
+		（1）SparkStreaming是纯流式处理框架吗？ 他的抽象是谁？
+		（2）背压机制原理
+		（3）Receiver和Direct模式原理
+		（4）kafka的offset维护在什么位置（ 0.10）
+		（5）transform算子里面的代码都在什么端执行
+		（6）UpdateStateByKey状态保存在什么位置？  有什么缺点
+		（7）window有三个概念  用wordcount案例画图说明	
+	5、内核
+	6、优化	

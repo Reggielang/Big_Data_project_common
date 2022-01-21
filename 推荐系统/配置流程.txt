@@ -1,0 +1,157 @@
+MongoDB单节点配置
+// 通过WGET下载Linux版本的MongoDB
+wget https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-rhel62-3.4.3.tgz
+// 将压缩包解压到指定目录
+tar -zxvf mongodb-linux-x86_64-rhel62-3.4.3.tgz -C /opt/module-alone/
+// 将解压后的文件取名
+ mv mongodb-linux-x86_64-rhel62-3.4.3 mongodb
+// 在安装目录下创建data文件夹用于存放数据和日志
+[root@hadoop101 module-alone]# mkdir mongodb/data/
+// 在data文件夹下创建db文件夹，用于存放数据
+[root@hadoop101 module-alone]# mkdir mongodb/data/db/
+// 在data文件夹下创建logs文件夹，用于存放日志
+[root@hadoop101 mongodb]# mkdir data/logs/
+// 在logs文件夹下创建log文件
+[root@hadoop101 mongodb]# touch data/logs/mongodb.log
+// 在data文件夹下创建mongodb.conf配置文件
+[root@hadoop101 mongodb]# touch data/mongodb.conf
+// 在mongodb.conf文件中输入如下内容
+[bigdata@linux mongodb]$ vim ./data/mongodb.conf
+#端口号port = 27017
+#数据目录
+dbpath = /opt/module-alone/mongodb/data/db
+#日志目录
+logpath = /opt/module-alone/mongodb/data/logs/mongodb.log
+#设置后台运行
+fork = true
+#日志输出方式
+logappend = true
+#开启认证
+#auth = true
+
+完成MongoDB的安装后，启动MongoDB服务器：
+// 启动MongoDB服务器
+[root@hadoop101 mongodb]#  bin/mongod -config /opt/module-alone/mongodb/data/mongodb.conf
+// 访问MongoDB服务器
+[root@hadoop101 mongodb]#  bin/mongo
+// 停止MongoDB服务器
+[root@hadoop101 mongodb]#  bin/mongod -shutdown -config /opt/module-alone/mongodb/data/mongodb.conf
+
+
+Redis（单节点）环境配置
+// 通过WGET下载REDIS的源码
+wget http://download.redis.io/releases/redis-4.0.2.tar.gz 
+// 将源代码解压到安装目录
+tar -zxvf redis-4.0.2.tar.gz -C /opt/module-alone/
+// 进入Redis源代码目录，编译安装
+cd redis-4.0.2/
+// 安装GCC
+yum install gcc
+// 编译源代码
+make MALLOC=libc
+// 编译安装
+ make install
+// 创建配置文件
+cp /opt/module-alone/redis-4.0.2/redis.conf /etc/ 
+// 修改配置文件中以下内容
+vim /etc/redis.conf
+daemonize yes   #37行  #是否以后台daemon方式运行，默认不是后台运行
+pidfile /var/run/redis/redis.pid   #41行  #redis的PID文件路径（可选）
+bind 0.0.0.0    #64行  #绑定主机IP，默认值为127.0.0.1，我们是跨机器运行，所以需要更改
+logfile /var/log/redis/redis.log   #104行  #定义log文件位置，模式log信息定向到stdout，输出到/dev/null（可选）
+dir “/usr/local/rdbfile”  #188行  #本地数据库存放路径，默认为./，编译安装默认存在在/usr/local/bin下（可选）
+在安装完Redis之后，启动Redis
+// 启动Redis服务器
+redis-server
+// 连接Redis服务器
+redis-cli
+// 停止Redis服务器
+redis-cli shutdown
+
+
+Spark（单节点）环境配置
+// 通过wget下载zookeeper安装包
+wget https://d3kbcqa49mib13.cloudfront.net/spark-2.1.1-bin-hadoop2.7.tgz 
+// 将spark解压到安装目录
+tar –zxvf spark-2.1.1-bin-hadoop2.7.tgz –C /opt/module-alone/
+// 进入spark安装目录
+cd spark-2.1.1-bin-hadoop2.7/
+// 复制slave配置文件
+ cp ./conf/slaves.template ./conf/slaves    
+// 修改slave配置文件
+vim ./conf/slaves
+hadoop101 #在文件最后将本机主机名进行添加
+// 复制Spark-Env配置文件
+[bigdata@linux spark-2.1.1-bin-hadoop2.7]$ cp ./conf/spark-env.sh.template ./conf/spark-env.sh 
+SPARK_MASTER_HOST=linux       #添加spark master的主机名
+SPARK_MASTER_PORT=7077        #添加spark master的端口号
+
+安装完成之后，启动Spark
+// 启动Spark集群
+sbin/start-all.sh
+// 访问Spark集群，浏览器访问http://linux:8080
+// 关闭Spark集群
+sbin/stop-all.sh
+
+
+Zookeeper（单节点）环境配置
+// 通过wget下载zookeeper安装包
+wget http://mirror.bit.edu.cn/apache/zookeeper/zookeeper-3.4.10/zookeeper-3.4.10.tar.gz 
+// 将zookeeper解压到安装目录
+tar –zxvf zookeeper-3.4.10.tar.gz –C ./cluster
+// 进入zookeeper安装目录
+cd zookeeper-3.4.10/
+// 创建data数据目录
+mkdir data/
+// 复制zookeeper配置文件
+cp ./conf/zoo_sample.cfg ./conf/zoo.cfg   
+// 修改zookeeper配置文件
+vim conf/zoo.cfg
+dataDir=/home/bigdata/cluster/zookeeper-3.4.10/data  #将数据目录地址修改为创建的目录
+//创建logs目录
+mkdir logs/
+// 修改zookeeper配置文件
+vim bin/zkEnv.sh
+将ZOO_LOG_DIR的目录修改为新创建的logs/的绝对路径
+// 启动Zookeeper服务
+bin/zkServer.sh start
+// 查看Zookeeper服务状态
+bin/zkServer.sh status
+ZooKeeper JMX enabled by default
+Using config: /home/bigdata/cluster/zookeeper-3.4.10/bin/../conf/zoo.cfg
+Mode: standalone
+// 关闭Zookeeper服务
+bin/zkServer.sh stop
+
+
+Flume-ng（单节点）环境配置
+// 通过wget下载zookeeper安装包
+wget http://www.apache.org/dyn/closer.lua/flume/1.8.0/apache-flume-1.8.0-bin.tar.gz
+// 将zookeeper解压到安装目录
+tar –xf apache-flume-1.8.0-bin.tar.gz –C ./cluster
+// 等待项目部署时使用
+
+
+
+Kafka（单节点）环境配置
+// 通过wget下载zookeeper安装包
+ wget http://mirrors.tuna.tsinghua.edu.cn/apache/kafka/0.10.2.1/kafka_2.11-0.10.2.1.tgz 
+// 将kafka解压到安装目录
+tar –zxvf kafka_2.12-0.10.2.1.tgz –C ./cluster
+// 进入kafka安装目录
+cd kafka_2.12-0.10.2.1/   
+// 修改kafka配置文件
+vim config/server.properties
+host.name=hadoop101               #修改主机名
+port=9092                         #修改服务端口号
+zookeeper.connect=hadoop101:2182   #修改Zookeeper服务器地址
+// 启动kafka服务 !!! 启动之前需要启动Zookeeper服务
+bin/kafka-server-start.sh -daemon ./config/server.properties
+// 关闭kafka服务
+bin/kafka-server-stop.sh
+// 创建topic
+bin/kafka-topics.sh --create --zookeeper hadoop101:2182 --replication-factor 1 --partitions 1 --topic recommender
+// kafka-console-producer 生产者
+bin/kafka-console-producer.sh --broker-list hadoop101:9092 --topic recommender
+// kafka-console-consumer 消费者
+bin/kafka-console-consumer.sh --bootstrap-server hadoop101:9092 --topic recommender

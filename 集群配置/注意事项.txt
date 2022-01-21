@@ -1,0 +1,34 @@
+NameNode Ha(高可用):进程级别，解决数据一致性问题，不允许数据丢失
+ResourceManager Ha(高可用): 线程级别，解决任务失败（可以人为重跑）
+
+注意： 搭建Ha之后会多出哪些服务1.JournalNode 2.ZKFC自动切换故障迁移（zookeeper）
+
+凡是 on Yarn模式 hive on yarn, spark on yarn, flink on yarn,都只需要安装一个客户端，不存在集群的概念 也就是说，在一台服务器上安装一个客户端就可以了。消耗的资源，都是yarn的资源。
+
+(效率很低) hive on spark 引用的依赖： spark core rdd 
+spark on hive 引用的依赖：spark sql dataframe
+
+sqoop :底层原理是MR,默认开启4个MR，消耗的资源是yarn资源 分布式的
+
+datax:单机 消耗当前节点（机器）资源，多线程的 非常是带款 需要编写json文件， 一张表一个json文件	
+
+TiDB: nosql和sql一体化的数据库 集群8台机器，必须要SSD固态硬盘 乐观锁的数据库
+
+1）如何选择Apache/CDH/HDP版本？
+（1）Apache：运维麻烦，组件间兼容性需要自己调研。（一般大厂使用，技术实力雄厚，有专业的运维人员）
+（2）CDH：国内使用最多的版本，但CM不开源，但其实对中、小公司使用来说没有影响（建议使用）
+（3）HDP：开源，可以进行二次开发，但是没有CDH稳定，国内使用较少
+
+
+通过spark读取文件，读取文件之后是df。 df.repation(1000).join 不要写
+
+mapPartitions：可能会出现的问题，1.每次处理数据都是循环一批数据，可能会oom 。2.迭代器如果要被多次使用，需要转为List
+
+coalesce: 两者都是用于改变分区的， 一般是缩小分区，基于内存的，可能会oom
+
+repartition： 会shuffle的，一般是用于增大分区
+
+insertinto:是根据表的字段顺序进行匹配插入的 需要提前建表的
+saveASTable:根据列的schema信息进行匹配的  spark会自动建表
+
+

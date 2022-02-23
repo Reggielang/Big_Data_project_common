@@ -39,6 +39,31 @@ Fair Scheduler（公平调度器）：
 在Fair调度器中，Fair调度器会为所有运行的job动态的调整系统资源。
 比如：当第一个大job提交时，只有这一个job在运行，此时它获得了所有集群资源；当第二个小任务提交后，Fair调度器会分配一半资源给这个小任务，让这两个任务公平的共享集群资源。直到所有可用资源都被分配完，并不再分配了。
 
+Hive：由 Facebook 开源用于解决海量结构化日志的数据统计工具。
+Hive 是基于 Hadoop 的一个数据仓库工具，可以将结构化的数据文件映射为一张表，并
+提供类 SQL 查询功能。
+Hive 本质：将 HQL 转化成 MapReduce 程序！
+
+（1）Hive 处理的数据存储在 HDFS
+（2）Hive 分析数据底层的实现是 MapReduce
+（3）执行程序运行在 Yarn 上
+
+二、Hive的优缺点
+优点
+1）操作接口采用类 SQL 语法，提供快速开发的能力（简单、容易上手）。
+2）避免了去写 MapReduce，减少开发人员的学习成本。
+3）Hive 的执行延迟比较高，因此 Hive 常用于数据分析，对实时性要求不高的场合。
+4）Hive 优势在于处理大数据，对于处理小数据没有优势，因为 Hive 的执行延迟比较高。
+5）Hive 支持用户自定义函数，用户可以根据自己的需求来实现自己的函数。
+
+缺点
+1）Hive 的 HQL 表达能力有限
+（1）迭代式算法无法表达
+（2）数据挖掘方面不擅长，由于 MapReduce 数据处理流程的限制，效率更高的算法却无法实现。
+2）Hive 的效率比较低
+（1）Hive 自动生成的 MapReduce 作业，通常情况下不够智能化
+（2）Hive 调优比较困难，粒度较粗
+
 Hive 内部表和外部表的区别
 未被external修饰的是内部表（managed table），被external修饰的为外部表（external table）
 区别：
@@ -74,6 +99,83 @@ sort by不是全局排序，其在数据进入reducer前完成排序.
 
 Hive小文件过多怎么解决？
 使用 hive 自带的 concatenate 命令，自动合并小文件。使用hadoop的archive将小文件归档
+
+分区表
+分区表实际上就是对应一个 HDFS 文件系统上的独立的文件夹，该文件夹下是该分区所有的数据文件。Hive 中的分区就是分目录，把一个大的数据集根据业务需要分割成小的数据集。在查询时通过 WHERE 子句中的表达式选择查询所需要的指定的分区，这样的查询效率会提高很多。
+1）引入分区表（需要根据日期对日志进行管理, 通过部门信息模拟）
+dept_20200401.log
+dept_20200402.log
+dept_20200403.log
+
+2）创建分区表语法
+hive (default)> create table dept_partition(
+deptno int, dname string, loc string)
+partitioned by (day string)
+row format delimited fields terminated by '\t';
+
+3）加载数据到分区表中
+（1）
+数据准备
+dept_20200401.log
+10 ACCOUNTING 1700
+20 RESEARCH 1800
+
+dept_20200402.log
+30 SALES 1900
+40 OPERATIONS 1700
+
+dept_20200403.log
+50 TEST 2000
+60 DEV 1900
+
+2）加载数据
+hive (default)> load data local inpath
+'/opt/module/hive/datas/dept_20200401.log' into table dept_partition partition(day='20200401');
+
+hive(default)>load data local inpath
+'/opt/module/hive/datas/dept_20200402.log' into table dept_partition partition(day='20200402');
+
+hive (default)> load data local inpath
+'/opt/module/hive/datas/dept_20200403.log' into table dept_partition partition(day='20200403');
+注意：分区表加载数据时，必须指定分区
+
+窗口函数（开窗函数）但是效率比group by 低
+OVER()：指定分析函数工作的数据窗口大小，这个数据窗口大小可能会随着行的变而变化
+
+按需求查询数据
+（1）查询在 2017 年 4 月份购买过的顾客及总人数
+select name,count(*) over () from business
+where substring(orderdate,0,7) = '2017-04' group by name;
+
+（2）查询顾客的购买明细及月购买总额
+select name,orderdate,cost,sum(cost) over(partition by month(orderdate)) from business;
+
+（3）将每个顾客的 cost 按照日期进行累加
+select name,orderdate,cost, sum(cost) over(partition by name order by orderdate) from business;
+
+（4）查看顾客上次的购买时间
+select name,orderdate,lag(orderdate,1) over(partition by name order by orderdate) from business;
+
+（5）查询前 20%时间的订单信息
+select * from (select name,orderdate,cost, ntile(5) over(order by orderdate) sorted from business) t
+where sorted = 1;
+
+Rank
+1）函数说明 也是在over（）中使用的
+RANK() 排序相同时会重复，总数不会变
+DENSE_RANK() 排序相同时会重复，总数会减少
+ROW_NUMBER() 会根据顺序计算
+
+select name,
+subject,
+score,
+rank() over(partition by subject order by score desc) rp,
+dense_rank() over(partition by subject order by score desc) drp,
+row_number() over(partition by subject order by score desc) rmp
+from score;
+
+每门学科前三名
+select name,subject,score from (select *,rank() over(partition by subject order by score desc) rk  from score) t1 where rk <=3 ;
 
 hive优化有哪些？
 数据存储及压缩。
